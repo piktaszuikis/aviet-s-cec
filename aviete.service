@@ -1,0 +1,11 @@
+[Unit]
+Description=Avietės ir TV integracija
+After=display-manager.service
+
+[Service]
+Restart=on-failure
+RestartSec=5
+ExecStart="%h"/.local/bin/aviete-cec
+
+[Install]
+WantedBy=default.target

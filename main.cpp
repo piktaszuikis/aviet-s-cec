@@ -20,28 +20,42 @@ using std::endl;
 // Reikalingas aptikti Ctrl+C
 #include <signal.h>
 
+#include "notify.h"
+
 xdo_t * x11;
 bool jau_išjungti = false;
 bool ar_nuspaustas_alt = false;
+bool ar_nuspaustas_shift = false;
 
 std::unordered_map<int, std::string> pultelio_veiksmai({
 	//{pultelio mygtukas, klaviatūros mygtukas},
 
 	{CEC::CEC_USER_CONTROL_CODE_SELECT, "Return"},
-	{CEC::CEC_USER_CONTROL_CODE_UP, "Up"},
-	{CEC::CEC_USER_CONTROL_CODE_DOWN, "Down"},
-	{CEC::CEC_USER_CONTROL_CODE_LEFT, "Left"},
-	{CEC::CEC_USER_CONTROL_CODE_RIGHT, "Right"},
 	{CEC::CEC_USER_CONTROL_CODE_EXIT, "BackSpace"},
 	{CEC::CEC_USER_CONTROL_CODE_ROOT_MENU, "Control+Shift+Alt+F5"},
+	{CEC::CEC_USER_CONTROL_CODE_F2_RED, "Escape"},
 	{CEC::CEC_USER_CONTROL_CODE_F3_GREEN, "Tab"},
-	{CEC::CEC_USER_CONTROL_CODE_F4_YELLOW, "Alt+Tab"},
+	{CEC::CEC_USER_CONTROL_CODE_F4_YELLOW, "Tab"},
 	{CEC::CEC_USER_CONTROL_CODE_PLAY, "space"},
 	{CEC::CEC_USER_CONTROL_CODE_PAUSE, "XF86AudioPause"},
 	{CEC::CEC_USER_CONTROL_CODE_REWIND, "XF86AudioPrev"},
 	{CEC::CEC_USER_CONTROL_CODE_FAST_FORWARD, "XF86AudioNext"},
-	{CEC::CEC_USER_CONTROL_CODE_BACKWARD, "XF86Back"},
-	{CEC::CEC_USER_CONTROL_CODE_FORWARD, "XF86Forward"}
+	{CEC::CEC_USER_CONTROL_CODE_ELECTRONIC_PROGRAM_GUIDE, "Super_L"},
+	{CEC::CEC_USER_CONTROL_CODE_STOP, "f"},
+	{CEC::CEC_USER_CONTROL_CODE_SOUND_SELECT, "Alt+F4"},
+	{CEC::CEC_OPCODE_RECORD_STATUS, "Menu"},
+});
+
+//Kai mygtukas nuspasustas ir laikomas nuspaustas
+std::unordered_map<int, std::string> pultelio_veiksmai_kai_nuspausa({
+	//{pultelio mygtukas, klaviatūros mygtukas},
+
+	{CEC::CEC_USER_CONTROL_CODE_UP, "Up"},
+	{CEC::CEC_USER_CONTROL_CODE_DOWN, "Down"},
+	{CEC::CEC_USER_CONTROL_CODE_LEFT, "Left"},
+	{CEC::CEC_USER_CONTROL_CODE_RIGHT, "Right"},
+	{CEC::CEC_USER_CONTROL_CODE_BACKWARD, "XF86AudioLowerVolume"},
+	{CEC::CEC_USER_CONTROL_CODE_FORWARD, "XF86AudioRaiseVolume"},
 });
 
 void kai_sisteminis_signalas(int)
@@ -52,6 +66,7 @@ void kai_sisteminis_signalas(int)
 void kai_puletio_mygtukas(void*, const CEC::cec_keypress* msg)
 {
     std::string mygtukas;
+	std::string zinute;
 
 	// Jei mygtukas nuspaustas, duration bus 0. Jei laikysi myguką nuspaustą, bus
 	// daug 'kai_puletio_mygtukas' iškvietimų su duration 0. Kai atleisi - duration
@@ -63,26 +78,66 @@ void kai_puletio_mygtukas(void*, const CEC::cec_keypress* msg)
 		//Vieną kartą paspaudi: Alt nuspaudžiamas, paspaudi dar kartą - atleidžiamas
 		if (msg->keycode == CEC::CEC_USER_CONTROL_CODE_F1_BLUE)
 		{
+			if( ar_nuspaustas_shift )
+				zinute = "SHIFT+";
+
 			if( ar_nuspaustas_alt )
-				xdo_send_keysequence_window_down(x11, CURRENTWINDOW, "Alt", 0);
-			else
+			{
 				xdo_send_keysequence_window_up(x11, CURRENTWINDOW, "Alt", 0);
+				zinute += "be alt";
+			}
+			else
+			{
+				xdo_send_keysequence_window_down(x11, CURRENTWINDOW, "Alt", 0);
+				zinute += "ALT+...";
+			}
 
 			ar_nuspaustas_alt = !ar_nuspaustas_alt;
 		}
+		//Geltonas mygtukas pas mus irgi įpatingas - jis bus Shift mygukas.
+		//Vieną kartą paspaudi: Shift nuspaudžiamas, paspaudi dar kartą - atleidžiamas
+		else if (msg->keycode == CEC::CEC_USER_CONTROL_CODE_F4_YELLOW)
+		{
+			if( ar_nuspaustas_alt )
+				zinute = "ALT+";
+
+			if( ar_nuspaustas_shift )
+			{
+				xdo_send_keysequence_window_up(x11, CURRENTWINDOW, "Shift", 0);
+				zinute += "be shift";
+			}
+			else
+			{
+				xdo_send_keysequence_window_down(x11, CURRENTWINDOW, "Shift", 0);
+				zinute += "SHIFT+...";
+			}
+
+			ar_nuspaustas_shift = !ar_nuspaustas_shift;
+		}
 		else if ( pultelio_veiksmai.find(msg->keycode) != pultelio_veiksmai.end() ) //ar mygtukas sumapintas
 		{
+			xdo_send_keysequence_window(x11, CURRENTWINDOW, "XF86WakeUp", 0);
 			xdo_send_keysequence_window(x11, CURRENTWINDOW, pultelio_veiksmai[msg->keycode].data(), 0);
 		}
 	}
+	else if ( pultelio_veiksmai_kai_nuspausa.find(msg->keycode) != pultelio_veiksmai_kai_nuspausa.end() )
+	{
+		xdo_send_keysequence_window(x11, CURRENTWINDOW, "XF86WakeUp", 0);
+		xdo_send_keysequence_window(x11, CURRENTWINDOW, pultelio_veiksmai_kai_nuspausa[msg->keycode].data(), 0);
+	}
 
-    std::cout << "kai_puletio_mygtukas: " << static_cast<int>(msg->keycode) << std::endl;
+	std::cerr << "0x" << std::hex << msg->keycode << std::endl;
+
+	if(!zinute.empty())
+		parodyti_pranesima(zinute);
 }
 
 void kai_komanda(void* , const CEC::cec_command* msg)
 {
-    if(msg->opcode == CEC::CEC_OPCODE_STANDBY)
-        jau_išjungti = true; //Televizorius mums liepė eiti miegoti (išsijungti)
+	/*
+	if(msg->opcode == CEC::CEC_OPCODE_STANDBY)
+		jau_išjungti = true; //Televizorius mums liepė eiti miegoti (išsijungti)
+	*/
 }
 
 int main(int , char* [])
